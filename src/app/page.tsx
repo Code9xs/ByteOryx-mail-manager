@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   let accounts: AccountShape[] = [];
   let groups: { id: string; name: string }[] = [];
+  let totalAccounts = 0;
   let accessRequired = false;
 
   try {
@@ -25,12 +26,25 @@ export default async function Home() {
     }
 
     const mailboxService = getMailboxService();
-    accounts = await mailboxService.listAccounts({ group: "default" });
+    const page = await mailboxService.listAccountsPage({
+        group: "default",
+        page: 1,
+        pageSize: 10
+    });
+    accounts = page.accounts;
+    totalAccounts = page.total;
     groups = await mailboxService.listGroups();
   } catch {
     accounts = [];
+    totalAccounts = 0;
     groups = [{ id: "default", name: "default" }];
   }
 
-  return <AdminConsole initialAccounts={accounts} initialGroups={groups} />;
+  return (
+    <AdminConsole
+      initialAccounts={accounts}
+      initialGroups={groups}
+      initialTotalAccounts={totalAccounts}
+    />
+  );
 }

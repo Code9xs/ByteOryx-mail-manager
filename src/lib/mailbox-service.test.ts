@@ -106,6 +106,32 @@ describe("mailbox service", () => {
 
     expect(await service.listAccounts({})).toEqual([]);
   });
+
+  it("returns paginated accounts with total count", async () => {
+    const service = createMailboxService({
+      secretKey: "0123456789abcdef0123456789abcdef",
+      store: createMemoryStore()
+    });
+
+    await service.importAccounts(
+      Array.from({ length: 12 }, (_, index) => ({
+        email: `user-${String(index + 1).padStart(2, "0")}@example.com`,
+        password: "pw",
+        clientId: "client",
+        refreshToken: "refresh"
+      }))
+    );
+
+    const page = await service.listAccountsPage({
+      group: "default",
+      page: 2,
+      pageSize: 5
+    });
+
+    expect(page.total).toBe(12);
+    expect(page.accounts).toHaveLength(5);
+    expect(page.accounts[0]?.email).toBe("user-06@example.com");
+  });
 });
 
 function createMemoryStore() {
@@ -130,14 +156,19 @@ function createMemoryStore() {
       return { created: true };
     },
     async listAccounts(filters: any) {
-      return accounts.filter((account) => {
-        const matchesSearch =
-          !filters.search || account.email.includes(filters.search);
-        const matchesTag =
-          !filters.tag || account.tags.some((tag: any) => tag.name === filters.tag);
-        const matchesGroup = !filters.group || account.group.name === filters.group;
-        return matchesSearch && matchesTag && matchesGroup;
-      });
+      return filterAccounts(filters);
+    },
+    async listAccountsPage(filters: any) {
+      const filtered = filterAccounts(filters);
+      const page = filters.page ?? 1;
+      const pageSize = filters.pageSize ?? 10;
+      return {
+        accounts: filtered.slice((page - 1) * pageSize, page * pageSize),
+        total: filtered.length
+      };
+    },
+    async listAccountEmails(filters: any) {
+      return filterAccounts(filters).map((account) => account.email);
     },
     async listGroups() {
       return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -178,4 +209,17 @@ function createMemoryStore() {
       }
     }
   };
+
+  function filterAccounts(filters: any) {
+    return accounts
+      .filter((account) => {
+        const matchesSearch =
+          !filters.search || account.email.includes(filters.search);
+        const matchesTag =
+          !filters.tag || account.tags.some((tag: any) => tag.name === filters.tag);
+        const matchesGroup = !filters.group || account.group.name === filters.group;
+        return matchesSearch && matchesTag && matchesGroup;
+      })
+      .sort((a, b) => a.email.localeCompare(b.email));
+  }
 }

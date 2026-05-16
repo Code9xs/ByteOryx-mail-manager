@@ -5,6 +5,7 @@ import {
   handleEmailDetailRequest,
   handleEmailListRequest,
   handleGroupsRequest,
+  handleImportBackgroundRequest,
   handleImportRequest,
   handleTagRequest
 } from "./mail-api";
@@ -109,6 +110,38 @@ describe("mail api handlers", () => {
       expect.any(Array),
       "sales"
     );
+  });
+
+  it("queues valid imports in the background without waiting for database writes", async () => {
+    let releaseImport!: () => void;
+    const service = {
+      importAccounts: vi.fn(
+        () =>
+          new Promise<{ created: number; updated: number }>((resolve) => {
+            releaseImport = () => resolve({ created: 1, updated: 0 });
+          })
+      )
+    };
+
+    const result = handleImportBackgroundRequest(
+      {
+        text: "ops@example.com----pw----client----refresh",
+        group: "sales"
+      },
+      service as any
+    );
+
+    expect(result).toEqual({
+      status: 202,
+      body: { queued: true, accepted: 1, errors: [] }
+    });
+    expect(service.importAccounts).toHaveBeenCalledWith(
+      expect.any(Array),
+      "sales"
+    );
+
+    releaseImport();
+    await Promise.resolve();
   });
 
   it("exports selected accounts with a custom delimiter", async () => {

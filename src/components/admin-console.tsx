@@ -88,10 +88,12 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function AdminConsole({
   initialAccounts,
-  initialGroups
+  initialGroups,
+  initialTotalAccounts
 }: {
   initialAccounts: Account[];
   initialGroups: Group[];
+  initialTotalAccounts: number;
 }) {
   const [accounts, setAccounts] = useState(initialAccounts);
   const [groups, setGroups] = useState(
@@ -101,7 +103,13 @@ export function AdminConsole({
   const [activeGroup, setActiveGroup] = useState("default");
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("就绪");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [pageJump, setPageJump] = useState("1");
+  const [totalAccounts, setTotalAccounts] = useState(initialTotalAccounts);
+  const [allMatchingSelected, setAllMatchingSelected] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importSubmitting, setImportSubmitting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [mailOpen, setMailOpen] = useState(false);
@@ -122,8 +130,15 @@ export function AdminConsole({
   const [showAccessKey, setShowAccessKey] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
 
-  const allSelected = accounts.length > 0 && selectedEmails.length === accounts.length;
+  const currentPageEmails = useMemo(
+    () => accounts.map((account) => account.email),
+    [accounts]
+  );
+  const currentPageSelected =
+    currentPageEmails.length > 0 &&
+    currentPageEmails.every((email) => selectedEmails.includes(email));
   const selectedCount = selectedEmails.length;
+  const totalPages = Math.max(1, Math.ceil(totalAccounts / pageSize));
 
   const groupOptions = useMemo(
     () => Array.from(new Set(groups.map((group) => group.name))),
@@ -135,15 +150,25 @@ export function AdminConsole({
     setGroups(data.groups.length ? data.groups : [{ id: "default", name: "default" }]);
   }
 
-  async function reloadAccounts(params = { search, group: activeGroup }) {
+  async function reloadAccounts(params = { search, group: activeGroup, page }) {
     const query = new URLSearchParams();
     if (params.search) query.set("search", params.search);
     if (params.group) query.set("group", params.group);
-    const data = await requestJson<{ accounts: Account[] }>(
+    query.set("page", String(params.page ?? page));
+    query.set("pageSize", String(pageSize));
+    const data = await requestJson<{
+      accounts: Account[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>(
       `/api/accounts?${query.toString()}`
     );
     setAccounts(data.accounts);
-    setSelectedEmails([]);
+    setTotalAccounts(data.total);
+    setPage(data.page);
+    setPageJump(String(data.page));
+    if (!allMatchingSelected) setSelectedEmails([]);
   }
 
   async function readFile(event: ChangeEvent<HTMLInputElement>) {
@@ -154,6 +179,7 @@ export function AdminConsole({
 
   async function importAccounts() {
     const targetGroup = (newGroup.trim() || importGroup || "default").trim();
+    setImportSubmitting(true);
     const result = await requestJson<any>("/api/import", {
       method: "POST",
       body: JSON.stringify({
@@ -161,16 +187,23 @@ export function AdminConsole({
         delimiter: importDelimiter,
         group: targetGroup
       })
-    });
-    setNotice(
-      `导入完成：新增 ${result.imported.created} 个，更新 ${result.imported.updated} 个，错误 ${result.errors.length} 个`
-    );
+    }).finally(() => setImportSubmitting(false));
     setImportOpen(false);
     setImportText("");
     setNewGroup("");
     setActiveGroup(targetGroup);
-    await reloadGroups();
-    await reloadAccounts({ search: "", group: targetGroup });
+    setPage(1);
+    setAllMatchingSelected(false);
+    setSelectedEmails([]);
+    setNotice(
+      result.errors?.length
+        ? `已提交后台导入：接受 ${result.accepted} 行，解析错误 ${result.errors.length} 行`
+        : `已提交后台导入：接受 ${result.accepted} 行`
+    );
+    setTimeout(() => {
+      void reloadGroups();
+      void reloadAccounts({ search: "", group: targetGroup, page: 1 });
+    }, 1500);
   }
 
   async function exportAccounts() {
@@ -198,7 +231,7 @@ export function AdminConsole({
     setNotice(action === "add" ? "标签已添加" : "标签已移除");
     setTagOpen(false);
     setTagInput("");
-    await reloadAccounts();
+    await reloadAccounts({ search, group: activeGroup, page });
   }
 
   async function deleteSelected(emails = selectedEmails) {
@@ -208,7 +241,8 @@ export function AdminConsole({
       body: JSON.stringify({ emails })
     });
     setNotice(`已删除 ${emails.length} 个账号`);
-    await reloadAccounts();
+    setAllMatchingSelected(false);
+    await reloadAccounts({ search, group: activeGroup, page });
   }
 
   async function syncAccount(account: Account) {
@@ -218,7 +252,21 @@ export function AdminConsole({
       body: JSON.stringify({ accountId: account.id })
     });
     setNotice(`${account.email} 已同步`);
-    await reloadAccounts();
+    await reloadAccounts({ search, group: activeGroup, page });
+  }
+
+  async function syncSelectedAccounts() {
+    if (!selectedEmails.length) return;
+    const selectedCount = selectedEmails.length;
+    setNotice(`正在提交 ${selectedCount} 个账号的后台同步任务`);
+    await requestJson("/api/sync", {
+      method: "POST",
+      body: JSON.stringify({ accountEmails: selectedEmails })
+    });
+    setNotice(`已提交后台同步 ${selectedCount} 个账号`);
+    setTimeout(() => {
+      void reloadAccounts({ search, group: activeGroup, page });
+    }, 1500);
   }
 
   async function openMail(account: Account) {
@@ -249,13 +297,78 @@ export function AdminConsole({
     );
   }
 
-  function toggleAll() {
-    setSelectedEmails(allSelected ? [] : accounts.map((account) => account.email));
+  function toggleCurrentPage() {
+    setAllMatchingSelected(false);
+    setSelectedEmails((current) => {
+      if (currentPageSelected) {
+        return current.filter((email) => !currentPageEmails.includes(email));
+      }
+      return Array.from(new Set([...current, ...currentPageEmails]));
+    });
+  }
+
+  async function selectAllMatching() {
+    const query = new URLSearchParams();
+    if (search) query.set("search", search);
+    if (activeGroup) query.set("group", activeGroup);
+    query.set("selectAll", "true");
+    const data = await requestJson<{ emails: string[] }>(
+      `/api/accounts?${query.toString()}`
+    );
+    setSelectedEmails(data.emails);
+    setAllMatchingSelected(true);
+    setNotice(`已选择全部匹配账号：${data.emails.length} 个`);
+  }
+
+  function clearSelection() {
+    setSelectedEmails([]);
+    setAllMatchingSelected(false);
   }
 
   async function changeGroup(group: string) {
     setActiveGroup(group);
-    await reloadAccounts({ search, group });
+    setPage(1);
+    setSelectedEmails([]);
+    setAllMatchingSelected(false);
+    await reloadAccounts({ search, group, page: 1 });
+  }
+
+  async function changePage(nextPage: number) {
+    const bounded = Math.min(totalPages, Math.max(1, nextPage));
+    await reloadAccounts({ search, group: activeGroup, page: bounded });
+  }
+
+  async function changePageSize(nextPageSize: number) {
+    setPageSize(nextPageSize);
+    setPage(1);
+    setPageJump("1");
+    setSelectedEmails([]);
+    setAllMatchingSelected(false);
+
+    const query = new URLSearchParams();
+    if (search) query.set("search", search);
+    if (activeGroup) query.set("group", activeGroup);
+    query.set("page", "1");
+    query.set("pageSize", String(nextPageSize));
+    const data = await requestJson<{
+      accounts: Account[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>(`/api/accounts?${query.toString()}`);
+    setAccounts(data.accounts);
+    setTotalAccounts(data.total);
+    setPage(data.page);
+    setPageJump(String(data.page));
+  }
+
+  function submitPageJump() {
+    const target = Number(pageJump);
+    if (!Number.isFinite(target)) {
+      setPageJump(String(page));
+      return;
+    }
+    void changePage(target);
   }
 
   async function openSettings() {
@@ -349,10 +462,21 @@ export function AdminConsole({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => reloadAccounts()}
+              onClick={() => {
+                setPage(1);
+                void reloadAccounts({ search, group: activeGroup, page: 1 });
+              }}
               className="h-10 rounded-md border border-line bg-white px-3 text-sm font-medium"
             >
               筛选
+            </button>
+            <button
+              onClick={syncSelectedAccounts}
+              disabled={!selectedCount}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              一键同步
             </button>
             <button
               onClick={() => setTagOpen(true)}
@@ -377,9 +501,9 @@ export function AdminConsole({
           <div className="grid grid-cols-[44px_minmax(220px,1.35fr)_minmax(100px,0.55fr)_minmax(140px,0.8fr)_120px_170px_260px] items-center border-b border-line bg-mist/60 px-4 py-3 text-xs font-semibold text-slate-600">
             <input
               type="checkbox"
-              checked={allSelected}
-              onChange={toggleAll}
-              aria-label="选择全部账号"
+              checked={currentPageSelected}
+              onChange={toggleCurrentPage}
+              aria-label="选择当前页账号"
               className="h-4 w-4"
             />
             <span>邮箱账号</span>
@@ -467,9 +591,83 @@ export function AdminConsole({
             )}
           </div>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
-          已选择 {selectedCount} 个账号 · {notice}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <span>
+              已选择 {selectedCount} 个账号
+              {allMatchingSelected ? "（全部匹配）" : ""} · 共 {totalAccounts} 个
+              · 第 {page}/{totalPages} 页 · {notice}
+            </span>
+            <button
+              onClick={selectAllMatching}
+              disabled={totalAccounts === 0 || allMatchingSelected}
+              className="rounded border border-line bg-white px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              选择全部匹配
+            </button>
+            <button
+              onClick={clearSelection}
+              disabled={!selectedCount}
+              className="rounded border border-line bg-white px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              清空选择
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <label className="flex items-center gap-1">
+              <span>每页</span>
+              <select
+                value={pageSize}
+                onChange={(event) => {
+                  void changePageSize(Number(event.target.value));
+                }}
+                className="h-8 rounded border border-line bg-white px-2 outline-none focus:border-action"
+                aria-label="每页显示条数"
+              >
+                {[10, 20, 50, 100].map((size) => (
+                  <option key={size} value={size}>
+                    {size} 条
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              onClick={() => changePage(page - 1)}
+              disabled={page <= 1}
+              className="rounded border border-line bg-white px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              上一页
+            </button>
+            <label className="flex items-center gap-1">
+              <span>跳至</span>
+              <input
+                value={pageJump}
+                onChange={(event) => setPageJump(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") submitPageJump();
+                }}
+                className="h-8 w-16 rounded border border-line bg-white px-2 text-center outline-none focus:border-action"
+                inputMode="numeric"
+                aria-label="跳转页码"
+              />
+              <span>页</span>
+            </label>
+            <button
+              onClick={submitPageJump}
+              disabled={totalPages <= 1}
+              className="rounded border border-line bg-white px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              跳转
+            </button>
+            <button
+              onClick={() => changePage(page + 1)}
+              disabled={page >= totalPages}
+              className="rounded border border-line bg-white px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              下一页
+            </button>
+          </div>
+        </div>
       </section>
 
       {importOpen && (
@@ -527,10 +725,11 @@ export function AdminConsole({
             />
             <button
               onClick={importAccounts}
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-action px-4 text-sm font-medium text-white"
+              disabled={importSubmitting}
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-action px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FileUp className="h-4 w-4" />
-              开始导入
+              {importSubmitting ? "提交中..." : "开始导入"}
             </button>
           </div>
         </Modal>

@@ -1,13 +1,54 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSyncRequest } from "./sync-api";
+import { handleSyncBackgroundRequest, handleSyncRequest } from "./sync-api";
 
 describe("sync api handler", () => {
-  it("returns a readable message for missing account id", async () => {
+  it("returns a readable message for missing account target", async () => {
     const result = await handleSyncRequest({}, {} as any);
 
     expect(result).toEqual({
       status: 400,
-      body: { error: "accountId is required" }
+      body: { error: "accountId or accountEmail is required" }
+    });
+  });
+
+  it("syncs a mailbox by account email", async () => {
+    const service = { syncMailboxByEmail: vi.fn(async () => undefined) };
+
+    const result = await handleSyncRequest(
+      { accountEmail: "ops@example.com" },
+      service as any
+    );
+
+    expect(result.status).toBe(200);
+    expect(service.syncMailboxByEmail).toHaveBeenCalledWith("ops@example.com");
+  });
+
+  it("queues selected mailbox emails for background sync", async () => {
+    const service = { syncMailboxByEmail: vi.fn(async () => undefined) };
+
+    const result = handleSyncBackgroundRequest(
+      { accountEmails: ["ops@example.com", "ops@example.com", "team@example.com"] },
+      service
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result).toEqual({
+      status: 202,
+      body: { queued: true, accepted: 2 }
+    });
+    expect(service.syncMailboxByEmail).toHaveBeenCalledWith("ops@example.com");
+    expect(service.syncMailboxByEmail).toHaveBeenCalledWith("team@example.com");
+  });
+
+  it("rejects empty background sync requests", () => {
+    const result = handleSyncBackgroundRequest(
+      { accountEmails: [" "] },
+      { syncMailboxByEmail: vi.fn() as any }
+    );
+
+    expect(result).toEqual({
+      status: 400,
+      body: { error: "accountEmails are required" }
     });
   });
 

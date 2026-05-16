@@ -32,6 +32,18 @@ export type MailboxStore = {
     tag?: string;
     group?: string;
   }): Promise<AccountShape[]>;
+  listAccountsPage(filters: {
+    search?: string;
+    tag?: string;
+    group?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ accounts: AccountShape[]; total: number }>;
+  listAccountEmails(filters: {
+    search?: string;
+    tag?: string;
+    group?: string;
+  }): Promise<string[]>;
   listGroups(): Promise<{ id: string; name: string }[]>;
   findOneAccount(filters: {
     group?: string;
@@ -77,6 +89,20 @@ export function createMailboxService({
 
     listAccounts(filters: { search?: string; tag?: string; group?: string }) {
       return store.listAccounts(filters);
+    },
+
+    listAccountsPage(filters: {
+      search?: string;
+      tag?: string;
+      group?: string;
+      page?: number;
+      pageSize?: number;
+    }) {
+      return store.listAccountsPage(filters);
+    },
+
+    listAccountEmails(filters: { search?: string; tag?: string; group?: string }) {
+      return store.listAccountEmails(filters);
     },
 
     listGroups() {

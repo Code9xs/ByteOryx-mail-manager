@@ -16,6 +16,20 @@ ByteOryx Mail Manager 是一个用于批量管理 Outlook 邮箱账号的本地/
 - 支持 API Key 调用外部接口获取邮箱和最新邮件。
 - 邮箱密码、Access Token、Refresh Token 均使用 `APP_SECRET_KEY` 加密后写入 SQLite。
 
+## 界面截图
+
+### 邮箱列表与分页
+
+![邮箱列表与分页](docs/screenshots/dashboard.png)
+
+### 账号导入
+
+![账号导入弹窗](docs/screenshots/import-dialog.png)
+
+### 系统设置
+
+![系统设置弹窗](docs/screenshots/settings-dialog.png)
+
 ## 本地启动
 
 ### 1. 安装依赖

@@ -23,6 +23,31 @@ export async function handleImportRequest(
   };
 }
 
+export function handleImportBackgroundRequest(
+  input: { text?: string; delimiter?: string; group?: string },
+  mailboxService: {
+    importAccounts(records: any[], group?: string): Promise<{ created: number; updated: number }>;
+  }
+): ApiResult {
+  const parsed = parseMailboxImport(input.text ?? "", input.delimiter || "----");
+  if (parsed.records.length > 0) {
+    void mailboxService
+      .importAccounts(parsed.records, input.group || "default")
+      .catch((error) => {
+        console.error("Background mailbox import failed", error);
+      });
+  }
+
+  return {
+    status: parsed.errors.length > 0 ? 207 : 202,
+    body: {
+      queued: parsed.records.length > 0,
+      accepted: parsed.records.length,
+      errors: parsed.errors
+    }
+  };
+}
+
 export async function handleExportRequest(
   input: { emails?: string[]; delimiter?: string },
   mailboxService: {

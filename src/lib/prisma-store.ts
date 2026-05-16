@@ -2,6 +2,18 @@ import type { PrismaClient } from "@prisma/client";
 import type { MailboxStore, TagShape } from "./mailbox-service";
 
 export function createPrismaMailboxStore(prisma: PrismaClient): MailboxStore {
+  function buildAccountWhere(filters: {
+    search?: string;
+    tag?: string;
+    group?: string;
+  }) {
+    return {
+      email: filters.search ? { contains: filters.search } : undefined,
+      tags: filters.tag ? { some: { tag: { name: filters.tag } } } : undefined,
+      group: filters.group ? { name: filters.group } : undefined
+    };
+  }
+
   return {
     async upsertAccount(data) {
       const existing = await prisma.mailboxAccount.findUnique({
@@ -25,15 +37,7 @@ export function createPrismaMailboxStore(prisma: PrismaClient): MailboxStore {
 
     async listAccounts(filters) {
       const accounts = await prisma.mailboxAccount.findMany({
-        where: {
-          email: filters.search
-            ? { contains: filters.search }
-            : undefined,
-          tags: filters.tag
-            ? { some: { tag: { name: filters.tag } } }
-            : undefined,
-          group: filters.group ? { name: filters.group } : undefined
-        },
+        where: buildAccountWhere(filters),
         include: {
           tags: { include: { tag: true } },
           group: true
@@ -45,6 +49,43 @@ export function createPrismaMailboxStore(prisma: PrismaClient): MailboxStore {
         ...account,
         tags: account.tags.map((item) => item.tag)
       }));
+    },
+
+    async listAccountsPage(filters) {
+      const page = Math.max(1, filters.page ?? 1);
+      const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 10));
+      const where = buildAccountWhere(filters);
+
+      const [accounts, total] = await prisma.$transaction([
+        prisma.mailboxAccount.findMany({
+          where,
+          include: {
+            tags: { include: { tag: true } },
+            group: true
+          },
+          orderBy: { email: "asc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        }),
+        prisma.mailboxAccount.count({ where })
+      ]);
+
+      return {
+        total,
+        accounts: accounts.map((account) => ({
+          ...account,
+          tags: account.tags.map((item) => item.tag)
+        }))
+      };
+    },
+
+    async listAccountEmails(filters) {
+      const accounts = await prisma.mailboxAccount.findMany({
+        where: buildAccountWhere(filters),
+        select: { email: true },
+        orderBy: { email: "asc" }
+      });
+      return accounts.map((account) => account.email);
     },
 
     async listGroups() {

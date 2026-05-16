@@ -105,6 +105,12 @@ export function createMailSyncService({
   }
 
   return {
+    async syncMailboxByEmail(email: string) {
+      const account = await store.getAccountByEmail(email);
+      if (!account) throw new Error("Mailbox account not found");
+      await this.syncMailbox(account.id);
+    },
+
     async refreshMailboxToken(accountId: string) {
       const account = await store.getAccountById(accountId);
       if (!account) throw new Error("Mailbox account not found");
