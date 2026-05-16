@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model MailboxAccount {
+  id                    String        @id @default(cuid())
+  email                 String        @unique
+  groupId               String        @default("default")
+  passwordEncrypted     String
+  clientId              String
+  refreshTokenEncrypted String
+  accessTokenEncrypted  String?
+  accessTokenExpiresAt  DateTime?
+  syncStatus            String        @default("idle")
+  lastSyncedAt          DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  group                 Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  tags                  MailboxTag[]
+  messages              MailMessage[]
+  syncLogs              SyncLog[]
+}
+
+model Group {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  createdAt DateTime         @default(now())
+  mailboxes MailboxAccount[]
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  createdAt DateTime     @default(now())
+  mailboxes MailboxTag[]
+}
+
+model MailboxTag {
+  mailboxId String
+  tagId     String
+  mailbox   MailboxAccount @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  tag       Tag            @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([mailboxId, tagId])
+}
+
+model MailMessage {
+  id             String         @id @default(cuid())
+  mailboxId      String
+  graphId        String
+  subject        String
+  fromAddress    String
+  receivedAt     DateTime
+  hasAttachments Boolean        @default(false)
+  isRead         Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  mailbox        MailboxAccount @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  bodyCache      MailBodyCache?
+
+  @@unique([mailboxId, graphId])
+  @@index([receivedAt])
+}
+
+model MailBodyCache {
+  id          String      @id @default(cuid())
+  messageId   String      @unique
+  contentType String
+  content     String
+  fetchedAt   DateTime    @default(now())
+  message     MailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+}
+
+model SyncLog {
+  id        String         @id @default(cuid())
+  mailboxId String
+  type      String
+  status    String
+  message   String?
+  createdAt DateTime       @default(now())
+  mailbox   MailboxAccount @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
