@@ -63,8 +63,14 @@ export async function syncMessageList(
   accessToken: string,
   fetcher: Fetcher = fetch
 ): Promise<GraphMailMessage[]> {
+  const query = new URLSearchParams({
+    $top: "50",
+    $orderby: "receivedDateTime desc",
+    $select: "id,subject,from,receivedDateTime,hasAttachments,isRead"
+  });
+
   const response = await fetcher(
-    "https://graph.microsoft.com/v1.0/me/messages?$top=50&$select=id,subject,from,receivedDateTime,hasAttachments,isRead",
+    `https://graph.microsoft.com/v1.0/me/messages?${query.toString()}`,
     {
       headers: { authorization: `Bearer ${accessToken}` }
     }

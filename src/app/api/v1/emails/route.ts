@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleEmailListRequest } from "@/server/mail-api";
 import { requireAdminAccess } from "@/server/admin-auth";
-import { getMailQueryService } from "@/server/services";
+import { getMailQueryService, getMailSyncService } from "@/server/services";
 
 export async function GET(request: Request) {
   const unauthorized = await requireAdminAccess();
@@ -9,7 +9,8 @@ export async function GET(request: Request) {
 
   const result = await handleEmailListRequest(
     new URL(request.url),
-    getMailQueryService()
+    getMailQueryService(),
+    getMailSyncService()
   );
   return NextResponse.json(result.body, { status: result.status });
 }

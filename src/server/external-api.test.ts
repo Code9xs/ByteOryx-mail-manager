@@ -46,32 +46,42 @@ describe("external mailbox api", () => {
   });
 
   it("returns the latest mail for a mailbox", async () => {
+    const mailQueryService = {
+      getLatestMessage: vi.fn(async () => ({
+        graphId: "mail-1",
+        subject: "Newest"
+      }))
+    };
+    const mailSyncService = {
+      syncMailboxByEmail: vi.fn(async () => undefined),
+      getMessageDetail: vi.fn(async () => ({
+        message: {
+          graphId: "mail-1",
+          subject: "Newest"
+        },
+        body: {
+          contentType: "html",
+          content: "<p>Hello</p>"
+        }
+      }))
+    };
+
     const result = await handleExternalLatestMailRequest(
       new URL("http://local/api/external/latest-mail?apiKey=ok&account=ops@example.com"),
       {
         settingsService: { verifyApiKey: vi.fn(async () => true) },
-        mailQueryService: {
-          getLatestMessage: vi.fn(async () => ({
-            graphId: "mail-1",
-            subject: "Newest"
-          }))
-        } as any,
-        mailSyncService: {
-          getMessageDetail: vi.fn(async () => ({
-            message: {
-              graphId: "mail-1",
-              subject: "Newest"
-            },
-            body: {
-              contentType: "html",
-              content: "<p>Hello</p>"
-            }
-          }))
-        } as any
+        mailQueryService: mailQueryService as any,
+        mailSyncService: mailSyncService as any
       }
     );
 
     expect(result.status).toBe(200);
+    expect(mailSyncService.syncMailboxByEmail).toHaveBeenCalledWith(
+      "ops@example.com"
+    );
+    expect(mailQueryService.getLatestMessage).toHaveBeenCalledWith(
+      "ops@example.com"
+    );
     expect(result.body.email).toEqual({
       message: { graphId: "mail-1", subject: "Newest" },
       body: { contentType: "html", content: "<p>Hello</p>" }

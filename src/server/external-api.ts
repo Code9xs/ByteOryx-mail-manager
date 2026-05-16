@@ -65,6 +65,7 @@ export async function handleExternalLatestMailRequest(
       getLatestMessage(account: string): Promise<{ graphId: string } | null>;
     };
     mailSyncService: {
+      syncMailboxByEmail(account: string): Promise<void>;
       getMessageDetail(account: string, mailId: string): Promise<unknown>;
     };
   }
@@ -77,6 +78,8 @@ export async function handleExternalLatestMailRequest(
 
   const account = url.searchParams.get("account");
   if (!account) return { status: 400, body: { error: "account is required" } };
+
+  await services.mailSyncService.syncMailboxByEmail(account);
 
   const email = await services.mailQueryService.getLatestMessage(account);
   if (!email) return { status: 404, body: { error: "Email not found" } };

@@ -54,6 +54,30 @@ describe("mail api handlers", () => {
     expect(result.body.emails).toEqual([{ graphId: "mail-1", subject: "Hi" }]);
   });
 
+  it("syncs the mailbox before listing messages for the UI", async () => {
+    const mailQueryService = {
+      listMessages: vi.fn(async () => [{ graphId: "mail-2", subject: "Fresh" }])
+    };
+    const mailSyncService = {
+      syncMailboxByEmail: vi.fn(async () => undefined)
+    };
+
+    const result = await handleEmailListRequest(
+      new URL("http://local/api/v1/emails?account=ops@example.com"),
+      mailQueryService as any,
+      mailSyncService as any
+    );
+
+    expect(result.status).toBe(200);
+    expect(mailSyncService.syncMailboxByEmail).toHaveBeenCalledWith(
+      "ops@example.com"
+    );
+    expect(mailQueryService.listMessages).toHaveBeenCalledWith({
+      account: "ops@example.com",
+      tag: undefined
+    });
+  });
+
   it("requires account and mail_id for detail requests", async () => {
     const result = await handleEmailDetailRequest(
       new URL("http://local/api/v1/email/detail?account=ops@example.com"),

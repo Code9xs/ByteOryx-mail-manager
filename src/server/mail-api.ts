@@ -112,10 +112,16 @@ export async function handleEmailListRequest(
       account?: string;
       tag?: string;
     }): Promise<unknown[]>;
+  },
+  mailSyncService?: {
+    syncMailboxByEmail(account: string): Promise<void>;
   }
 ): Promise<ApiResult> {
   const account = url.searchParams.get("account") ?? undefined;
   const tag = url.searchParams.get("tag") ?? undefined;
+  if (account && mailSyncService) {
+    await mailSyncService.syncMailboxByEmail(account);
+  }
   const emails = await mailQueryService.listMessages({ account, tag });
   return { status: 200, body: { emails } };
 }

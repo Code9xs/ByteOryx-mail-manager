@@ -98,6 +98,12 @@ describe("graph client", () => {
 
     const messages = await syncMessageList("access-token", listFetcher);
 
+    const requestUrl = new URL(listFetcher.mock.calls[0]?.[0]?.toString() ?? "");
+    expect(requestUrl.searchParams.get("$top")).toBe("50");
+    expect(requestUrl.searchParams.get("$orderby")).toBe("receivedDateTime desc");
+    expect(requestUrl.searchParams.get("$select")).toBe(
+      "id,subject,from,receivedDateTime,hasAttachments,isRead"
+    );
     expect(messages).toEqual([
       {
         graphId: "mail-1",
