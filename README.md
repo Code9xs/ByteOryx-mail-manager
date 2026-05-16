@@ -289,6 +289,84 @@ pm2 save
 - 定期备份 `prisma/dev.db`。
 - 不要提交 `.env`、数据库文件或导出文件。
 
+## Docker 部署
+
+项目提供 `Dockerfile` 和 `docker-compose.yml`，适合在 VPS、NAS、内网服务器上部署。
+
+### 1. 准备 `.env`
+
+Docker Compose 会读取项目根目录的 `.env` 文件。至少需要配置：
+
+```env
+APP_SECRET_KEY="replace-with-at-least-32-random-bytes"
+GRAPH_TENANT_ID="common"
+GRAPH_SCOPES="https://graph.microsoft.com/Mail.Read offline_access"
+```
+
+注意：
+
+- `APP_SECRET_KEY` 必须长期保持不变，否则已导入账号的加密密码和 Token 无法解密。
+- `DATABASE_URL` 在 compose 中已设置为 `file:./dev.db`，通常不需要额外配置。
+- SQLite 数据库存放在 Docker volume `byteoryx_prisma` 中，对应容器内 `/app/prisma/dev.db`。
+
+### 2. 构建并启动
+
+```bash
+docker compose up -d --build
+```
+
+访问：
+
+```text
+http://localhost:3000
+```
+
+首次启动时，容器入口脚本会自动执行：
+
+```bash
+npx prisma generate
+npx prisma db push
+node scripts/ensure-default-group.js
+```
+
+### 3. 查看日志
+
+```bash
+docker compose logs -f
+```
+
+### 4. 停止服务
+
+```bash
+docker compose down
+```
+
+如果需要连同数据库卷一起删除：
+
+```bash
+docker compose down -v
+```
+
+删除卷会清空所有已导入邮箱、标签、邮件缓存和系统设置，请谨慎执行。
+
+### 5. 备份 SQLite 数据库
+
+数据库位于命名卷 `byteoryx_prisma`。可以用临时容器导出：
+
+```bash
+docker run --rm \
+  -v byteoryx-mail-manager_byteoryx_prisma:/data \
+  -v "$PWD:/backup" \
+  busybox \
+  cp /data/dev.db /backup/dev.db.backup
+```
+
+Windows PowerShell 可将 `$PWD` 改为当前目录变量：
+
+```powershell
+docker run --rm -v byteoryx-mail-manager_byteoryx_prisma:/data -v ${PWD}:/backup busybox cp /data/dev.db /backup/dev.db.backup
+```
+
 ## Cloudflare Workers 部署说明
 
 Cloudflare 官方当前推荐使用 OpenNext adapter 将 Next.js 部署到 Workers。相关文档：

@@ -1,0 +1,19 @@
+services:
+  byteoryx-mail-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: byteoryx-mail-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "file:./dev.db"
+      APP_SECRET_KEY: "${APP_SECRET_KEY:?set APP_SECRET_KEY in .env}"
+      GRAPH_TENANT_ID: "${GRAPH_TENANT_ID:-common}"
+      GRAPH_SCOPES: "${GRAPH_SCOPES:-https://graph.microsoft.com/Mail.Read offline_access}"
+    volumes:
+      - byteoryx_prisma:/app/prisma
+
+volumes:
+  byteoryx_prisma:
